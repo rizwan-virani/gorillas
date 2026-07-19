@@ -1,0 +1,905 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gorillas — the QBasic classic, reborn</title>
+    <style>
+      /* ==================================================================
+         GORILLAS — a faithful recreation of the classic QBasic GORILLAS.BAS
+         (1991). One self-contained file: no build step, no dependencies.
+         Just open it in a browser (or host the folder anywhere static).
+         ================================================================== */
+      :root {
+        --bg: #0b0f1a;
+        --panel: #131a2b;
+        --panel2: #0e1424;
+        --line: #24304a;
+        --text: #e7ecf5;
+        --muted: #93a1bd;
+        --accent: #ffc53d;
+        --accent-dim: #b8860b;
+        --cyan: #38bdf8;
+        --rose: #fb7185;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        background: radial-gradient(1200px 700px at 50% -10%, #1a2340 0%, var(--bg) 60%);
+        color: var(--text);
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        height: 100vh; height: 100dvh; overflow: hidden;
+      }
+      /* Full-height app: a header row on top, then a main row that holds the
+         big game board on the left and a slim controls column on the right, so
+         the board gets the whole height and everything fits without scrolling. */
+      .wrap {
+        max-width: 1500px; margin: 0 auto; padding: 10px 14px;
+        height: 100vh; height: 100dvh;
+        display: flex; flex-direction: column; gap: 8px; overflow: hidden;
+      }
+      .main { flex: 1 1 auto; min-height: 0; display: flex; gap: 12px; }
+      .side {
+        width: 320px; flex-shrink: 0; min-height: 0;
+        display: flex; flex-direction: column; gap: 8px; overflow-y: auto;
+      }
+      header.top { display: flex; align-items: center; gap: 14px; margin-bottom: 0; flex-shrink: 0; }
+      .logo {
+        width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center;
+        background: rgba(255, 197, 61, 0.14); color: var(--accent);
+        box-shadow: inset 0 0 0 1px rgba(255, 197, 61, 0.3); font-size: 24px;
+      }
+      h1 { font-size: 22px; margin: 0; letter-spacing: -0.02em; }
+      header.top p { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); }
+      .btn {
+        border: 0; cursor: pointer; font-weight: 700; border-radius: 10px;
+        padding: 10px 18px; font-size: 14px; background: var(--accent); color: #1a1200;
+        transition: background 0.15s, opacity 0.15s;
+      }
+      .btn:hover { background: #ffd45e; }
+      .btn:disabled { background: #2a3550; color: #6b7793; cursor: not-allowed; }
+      .btn.ghost {
+        background: var(--panel); color: var(--text); box-shadow: inset 0 0 0 1px var(--line);
+        padding: 9px 14px; font-size: 13px; font-weight: 600;
+      }
+      .btn.ghost:hover { box-shadow: inset 0 0 0 1px var(--accent); background: var(--panel2); }
+      .newmatch { margin-left: auto; }
+
+      .scoreboard {
+        display: flex; flex-direction: column; gap: 6px;
+        background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+        padding: 10px; flex-shrink: 0;
+      }
+      .pill {
+        display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px;
+        background: var(--panel2); border: 1px solid transparent; white-space: nowrap;
+      }
+      .pill .nm { flex: 1; }
+      .windbox { justify-content: center; }
+      .pill.active-cyan { box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.5); background: #17223a; }
+      .pill.active-rose { box-shadow: 0 0 0 2px rgba(251, 113, 133, 0.5); background: #17223a; }
+      .dot { width: 10px; height: 10px; border-radius: 50%; opacity: 0.4; }
+      .dot.cyan { background: var(--cyan); }
+      .dot.rose { background: var(--rose); }
+      .pill.active-cyan .dot, .pill.active-rose .dot { opacity: 1; animation: pulse 1s infinite; }
+      @keyframes pulse { 50% { opacity: 0.35; } }
+      .pill .nm { font-weight: 700; font-size: 13px; }
+      .pill .sc {
+        margin-left: 3px; font-variant-numeric: tabular-nums; font-weight: 800; color: var(--accent);
+        background: #0a0f1c; padding: 2px 7px; border-radius: 6px; font-size: 13.5px;
+      }
+      .windbox { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+      .windbox .sep { color: #3a475f; }
+
+      /* The stage is the framed "screen" and fills all the space the main row
+         gives it; the canvas fills the stage, scaled to fit and keeping its
+         1000x600 ratio (small letterbox bars in the sky colour if needed). */
+      .stage {
+        flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden;
+        border: 1px solid var(--line); border-radius: 14px; background: #000a52;
+        box-shadow: 0 18px 50px -20px rgba(0, 0, 0, 0.7);
+      }
+      canvas {
+        display: block; width: 100%; height: 100%; object-fit: contain;
+        image-rendering: auto; background: #000a52;
+      }
+
+      .controls {
+        background: var(--panel); border: 1px solid var(--line);
+        border-radius: 16px; padding: 14px 16px;
+      }
+      .turnline { display: flex; align-items: center; gap: 12px; font-size: 14px; flex-wrap: wrap; }
+      .turnline .who { font-weight: 800; }
+      .turnline .fly { color: var(--accent); }
+      .msg {
+        display: none; align-items: center; justify-content: space-between; gap: 12px;
+        background: rgba(255, 197, 61, 0.1); border: 1px solid rgba(255, 197, 61, 0.4);
+        border-radius: 12px; padding: 10px 14px; margin-bottom: 10px;
+      }
+      .msg.show { display: flex; }
+      .msg .txt { font-weight: 700; color: var(--accent); font-size: 14px; }
+      .sliders { display: grid; gap: 14px; grid-template-columns: 1fr; margin-top: 10px; }
+      .sliders.locked { opacity: 0.5; pointer-events: none; }
+      label.field { font-size: 13.5px; color: var(--muted); display: block; }
+      label.field .row { display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: 600; }
+      label.field .val { font-variant-numeric: tabular-nums; color: var(--accent); }
+      input[type="range"] { width: 100%; accent-color: var(--accent); }
+      .fire { margin-top: 12px; width: 100%; justify-content: center; display: flex; align-items: baseline; gap: 6px; }
+      .fire .hint { font-weight: 400; font-size: 12px; opacity: 0.7; }
+      .tip { margin-top: 10px; font-size: 11.5px; color: #6f7c96; line-height: 1.45; }
+
+      /* "Did you know?" panel — fills the leftover space under the controls and
+         rotates through retro-computing facts. */
+      .facts {
+        flex: 1 1 auto; min-height: 90px;
+        background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+        padding: 12px 14px; display: flex; flex-direction: column;
+      }
+      .facts-h {
+        display: flex; align-items: center; justify-content: space-between;
+        font-weight: 800; font-size: 12.5px; color: var(--accent);
+        letter-spacing: 0.02em; margin-bottom: 8px; flex-shrink: 0;
+      }
+      .facts-num { font-weight: 700; font-size: 10.5px; color: #556; font-variant-numeric: tabular-nums; }
+      .facts-body {
+        flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0;
+        font-size: 12.5px; line-height: 1.55; color: var(--text);
+        transition: opacity 0.35s ease;
+      }
+      .facts-foot {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-top: 8px; font-size: 10.5px; color: #6f7c96; flex-shrink: 0;
+      }
+      #factNext {
+        background: none; border: 1px solid var(--line); color: var(--muted);
+        border-radius: 8px; padding: 3px 9px; cursor: pointer; font-size: 11px; font-weight: 600;
+      }
+      #factNext:hover { border-color: var(--accent); color: var(--accent); }
+
+      /* On short screens, drop the non-essential chrome so the board gets the
+         most height (and therefore size) possible without scrolling. */
+      @media (max-height: 740px) {
+        header.top p { display: none; }
+        .tip { display: none; }
+        .logo { width: 38px; height: 38px; font-size: 20px; }
+        h1 { font-size: 19px; }
+        .wrap { gap: 6px; padding: 8px 12px; }
+        .controls { padding: 12px 14px; }
+      }
+
+      /* Narrow / portrait screens: stack the board above the controls and let
+         the page scroll normally, with the board sized to the full width. */
+      @media (max-width: 820px) {
+        body, .wrap { height: auto; overflow: visible; }
+        .main { flex-direction: column; }
+        .stage { flex: none; }
+        .side { width: 100%; overflow: visible; }
+        canvas { width: 100%; height: auto; max-height: none; }
+        .sliders { grid-template-columns: 1fr 1fr; }
+      }
+
+      /* setup overlay */
+      .overlay {
+        position: fixed; inset: 0; background: rgba(0, 0, 0, 0.72); display: grid; place-items: start center;
+        padding: 40px 16px; overflow-y: auto; z-index: 50;
+      }
+      .overlay.hide { display: none; }
+      .card {
+        width: 100%; max-width: 560px; background: var(--panel); border: 1px solid var(--line);
+        border-radius: 18px; padding: 24px;
+      }
+      .card h2 { margin: 0 0 18px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+      .grid2 { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+      @media (max-width: 520px) { .grid2 { grid-template-columns: 1fr; } }
+      .card label { font-size: 13.5px; color: var(--text); display: block; }
+      .card label span.lab { display: block; font-weight: 600; margin-bottom: 6px; }
+      .card input[type="text"], .card select {
+        width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+        border-radius: 10px; padding: 10px 12px; font-size: 14px; outline: none;
+      }
+      .card input[type="text"]:focus, .card select:focus { border-color: var(--accent); }
+      .toggle { display: flex; gap: 8px; }
+      .toggle button {
+        flex: 1; border: 1px solid var(--line); background: var(--panel2); color: var(--muted);
+        border-radius: 10px; padding: 10px; font-size: 13.5px; font-weight: 600; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; gap: 6px;
+      }
+      .toggle button.on { border-color: var(--accent); background: rgba(255, 197, 61, 0.14); color: var(--accent); }
+      .card .start { margin-top: 22px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="top">
+        <div class="logo">🦍</div>
+        <div>
+          <h1>Gorillas</h1>
+          <p>The exploding-banana artillery duel from QBasic (1991), reborn in your browser.</p>
+        </div>
+        <button class="btn ghost newmatch" id="newMatchBtn">⚙ New match</button>
+      </header>
+
+      <div class="main">
+        <div class="stage" id="stage" hidden>
+          <canvas id="game" width="1000" height="600"></canvas>
+        </div>
+
+        <div class="side" id="side" hidden>
+          <div class="scoreboard" id="scoreboard">
+            <div class="pill" id="pill0">
+              <span class="dot cyan"></span><span class="nm" id="name0">Player 1</span><span class="sc" id="score0">0</span>
+            </div>
+            <div class="windbox">
+              <span>💨 <span id="windText">calm</span></span>
+              <span class="sep">·</span>
+              <span>First to <span id="targetText">3</span></span>
+            </div>
+            <div class="pill" id="pill1">
+              <span class="dot rose"></span><span class="nm" id="name1">Computer</span><span class="sc" id="score1">0</span>
+            </div>
+          </div>
+
+          <div class="controls" id="controls">
+            <div class="msg" id="msg">
+              <span class="txt" id="msgText"></span>
+              <span><button class="btn" id="msgBtn"></button></span>
+            </div>
+            <div class="turnline">
+              <span class="who" id="turnWho">Player 1's turn</span>
+              <span class="fly" id="flyTag" hidden>🍌 banana away!</span>
+            </div>
+            <div class="sliders" id="sliders">
+              <label class="field">
+                <span class="row"><span>Angle</span><span class="val" id="angleVal">45°</span></span>
+                <input type="range" id="angle" min="0" max="90" value="45" />
+              </label>
+              <label class="field">
+                <span class="row"><span>Velocity</span><span class="val" id="powerVal">50</span></span>
+                <input type="range" id="power" min="3" max="30" value="15" />
+              </label>
+            </div>
+            <button class="btn fire" id="fireBtn">▶ Fire!<span class="hint">(or press Enter)</span></button>
+            <p class="tip">Set your angle and velocity, mind the wind, and lob the banana onto the other gorilla.
+              Bananas crater the buildings — and yes, you can bonk the sun.</p>
+          </div>
+
+          <div class="facts" id="facts">
+            <div class="facts-h"><span>💾 Did you know?</span><span class="facts-num" id="factNum"></span></div>
+            <p class="facts-body" id="factText"></p>
+            <div class="facts-foot">
+              <span>Retro computing &amp; games</span>
+              <button id="factNext" type="button">Next ›</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- setup overlay -->
+    <div class="overlay" id="overlay">
+      <div class="card">
+        <h2>Match setup</h2>
+        <div class="grid2">
+          <label>
+            <span class="lab">Player 1 name</span>
+            <input type="text" id="in_name0" value="Player 1" />
+          </label>
+          <label>
+            <span class="lab">Opponent</span>
+            <div class="toggle">
+              <button id="opp_cpu" class="on">🤖 Computer</button>
+              <button id="opp_2p">🧑 2 players</button>
+            </div>
+          </label>
+          <label id="wrap_name1" style="display:none">
+            <span class="lab">Player 2 name</span>
+            <input type="text" id="in_name1" value="Player 2" />
+          </label>
+          <label>
+            <span class="lab">Gravity</span>
+            <select id="in_planet">
+              <option value="Moon">Moon (low)</option>
+              <option value="Earth" selected>Earth</option>
+              <option value="Jupiter">Jupiter (high)</option>
+            </select>
+          </label>
+          <label>
+            <span class="lab">Wins needed: <span id="targetLabel">3</span></span>
+            <input type="range" id="in_target" min="1" max="9" value="3" />
+          </label>
+        </div>
+        <button class="btn start" id="startBtn">▶ Start match</button>
+      </div>
+    </div>
+
+    <script>
+      /* ====================================================================
+         Fixed internal resolution — canvas is drawn at this size and CSS-scaled,
+         so the physics feel identical on every screen.
+         ==================================================================== */
+      const W = 1000, H = 600;
+      const GRAVITY = { Earth: 0.11, Moon: 0.03, Jupiter: 0.26 };
+      const POWER_SCALE = 0.62;   // velocity → px per physics tick
+      const WIND_SCALE = 0.0009;  // wind units → sideways acceleration per tick
+      const SUBSTEPS = 3;         // physics substeps per frame (no tunnelling)
+      // Global time scale for the banana's flight. <1 slows the whole arc down
+      // (same trajectory, just traversed more slowly) so you can watch it lob
+      // across the screen like the original — the QBasic banana was leisurely.
+      const SPEED = 0.5;
+      const CRATER_R = 28;
+      const BLAST_R = 34;
+
+      // The classic EGA city palette: cyan, red, blue and grey buildings under a
+      // dark blue night sky, with bright yellow windows.
+      const BUILDING_COLORS = ["#00a3a3", "#a83232", "#3050a8", "#8a8a99"];
+      const WINDOW_LIT = "#ffe14d", WINDOW_DARK = "#101828";
+
+      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+      const rand = (lo, hi) => lo + Math.random() * (hi - lo);
+      const randInt = (lo, hi) => Math.floor(rand(lo, hi + 1));
+
+      /* ---- skyline generation ---- */
+      function makeCity() {
+        const buildings = [];
+        let x = 0;
+        while (x < W) {
+          const bw = randInt(58, 104), bh = randInt(110, 380);
+          const b = { x, w: Math.min(bw, W - x), top: H - bh,
+            color: BUILDING_COLORS[randInt(0, BUILDING_COLORS.length - 1)], windows: [] };
+          const wc = 12, wh = 15, gx = 10, gy = 15;
+          for (let wy = b.top + gy; wy < H - 12; wy += wh + 8)
+            for (let wx = b.x + gx; wx < b.x + b.w - wc; wx += wc + 8)
+              b.windows.push({ x: wx, y: wy, lit: Math.random() > 0.35 });
+          buildings.push(b);
+          x += b.w;
+        }
+        return buildings;
+      }
+      function heightMap(buildings) {
+        const hm = new Float32Array(W).fill(H);
+        for (const b of buildings)
+          for (let cx = b.x; cx < b.x + b.w && cx < W; cx++) hm[cx] = b.top;
+        return hm;
+      }
+      function paintTerrain(tctx, buildings) {
+        tctx.clearRect(0, 0, W, H);
+        for (const b of buildings) {
+          tctx.fillStyle = b.color;
+          tctx.fillRect(b.x, b.top, b.w, H - b.top);
+          tctx.fillStyle = "rgba(255,255,255,0.08)";
+          tctx.fillRect(b.x, b.top, b.w, 3);
+          for (const win of b.windows) {
+            tctx.fillStyle = win.lit ? WINDOW_LIT : WINDOW_DARK;
+            tctx.fillRect(win.x, win.y, 12, 15);
+          }
+        }
+      }
+
+      /* ---- sprites ---- */
+      // Each arm is drawn as a solid capsule from shoulder to fist, with the
+      // fist position interpolated between "down at the side" (lift 0) and
+      // "raised up and out" (lift 1). Because the pose is a continuous function
+      // of `lift`, the arm sweeps smoothly and every in-between frame is drawn —
+      // no popping, no disappearing limbs.
+      function drawArm(ctx, side, lift, body, dark) {
+        const sx = side * 11, sy = -28;          // shoulder
+        const downX = side * 10, downY = -6;     // fist, arm hanging down
+        const upX = side * 22, upY = -49;        // fist, arm raised up/out
+        const hx = downX + (upX - downX) * lift;
+        const hy = downY + (upY - downY) * lift;
+        ctx.strokeStyle = body;
+        ctx.lineWidth = 8;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(hx, hy);
+        ctx.stroke();
+        ctx.fillStyle = dark;
+        ctx.beginPath();
+        ctx.arc(hx, hy, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      function drawGorilla(ctx, gx, feetY, leftLift, rightLift) {
+        const body = "#4b4b52", dark = "#35353b", light = "#5f5f68";
+        ctx.save();
+        ctx.translate(gx, feetY);
+        // legs
+        ctx.fillStyle = dark; ctx.fillRect(-11, -10, 8, 12); ctx.fillRect(3, -10, 8, 12);
+        // torso
+        ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(0, -22, 14, 16, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = light; ctx.beginPath(); ctx.ellipse(0, -20, 7, 10, 0, 0, Math.PI * 2); ctx.fill();
+        // arms (smoothly raised by their lift amount)
+        drawArm(ctx, -1, leftLift, body, dark);
+        drawArm(ctx, 1, rightLift, body, dark);
+        // head + face
+        ctx.fillStyle = body; ctx.beginPath(); ctx.arc(0, -44, 10, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = light; ctx.beginPath(); ctx.ellipse(0, -41, 6, 5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = dark; ctx.fillRect(-8, -49, 16, 3);
+        ctx.fillStyle = "#0b0b0d"; ctx.fillRect(-4, -44, 2, 2); ctx.fillRect(2, -44, 2, 2);
+        ctx.restore();
+      }
+      function drawSun(ctx, shocked) {
+        const cx = W / 2, cy = 46, r = 26;
+        ctx.save();
+        ctx.fillStyle = "#ffd23f"; ctx.strokeStyle = "#ffd23f"; ctx.lineWidth = 3;
+        for (let i = 0; i < 12; i++) {
+          const a = (i / 12) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(a) * (r + 4), cy + Math.sin(a) * (r + 4));
+          ctx.lineTo(cx + Math.cos(a) * (r + 12), cy + Math.sin(a) * (r + 12));
+          ctx.stroke();
+        }
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#b8860b";
+        ctx.beginPath(); ctx.arc(cx - 9, cy - 4, 2.5, 0, Math.PI * 2); ctx.arc(cx + 9, cy - 4, 2.5, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "#b8860b"; ctx.lineWidth = 2.5; ctx.beginPath();
+        if (shocked) ctx.arc(cx, cy + 8, 6, 0, Math.PI * 2);
+        else ctx.arc(cx, cy + 3, 9, 0.15 * Math.PI, 0.85 * Math.PI);
+        ctx.stroke(); ctx.restore();
+      }
+      // A proper crescent banana: a fat curved body tapering to two brown tips,
+      // tumbling as it flies (the `spin` rotation) just like the original.
+      function drawBanana(ctx, x, y, spin) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(spin);
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        // dark outline behind, so it reads against bright buildings and sky
+        ctx.strokeStyle = "#5c4600";
+        ctx.lineWidth = 9;
+        ctx.beginPath();
+        ctx.moveTo(-10, 5);
+        ctx.quadraticCurveTo(0, -12, 10, 5);
+        ctx.stroke();
+        // yellow body
+        ctx.strokeStyle = "#ffdd33";
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(-10, 5);
+        ctx.quadraticCurveTo(0, -11, 10, 5);
+        ctx.stroke();
+        // soft highlight along the belly
+        ctx.strokeStyle = "rgba(255,255,255,0.5)";
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(-6, 3.5);
+        ctx.quadraticCurveTo(0, -6.5, 6, 3.5);
+        ctx.stroke();
+        // brown tips at each end
+        ctx.fillStyle = "#4a3800";
+        ctx.beginPath();
+        ctx.arc(-10, 5, 2, 0, Math.PI * 2);
+        ctx.arc(10, 5, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      // Live aim indicator: a dashed arrow from the active gorilla showing the
+      // direction of the chosen angle. Its length also grows with velocity, so
+      // the player gets a feel for both dials before committing to a shot.
+      function drawAimGuide(ctx, go, dir, angDeg, pow) {
+        const a = angDeg * (Math.PI / 180);
+        const ox = go.cx + dir * 14, oy = go.cy - 30;
+        const len = 24 + pow * 0.7;
+        const ex = ox + dir * Math.cos(a) * len;
+        const ey = oy - Math.sin(a) * len;
+        ctx.save();
+        ctx.strokeStyle = "rgba(255,255,255,0.8)";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 5]);
+        ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ex, ey); ctx.stroke();
+        ctx.setLineDash([]);
+        const ah = Math.atan2(ey - oy, ex - ox);
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
+        ctx.beginPath();
+        ctx.moveTo(ex, ey);
+        ctx.lineTo(ex - Math.cos(ah - 0.4) * 9, ey - Math.sin(ah - 0.4) * 9);
+        ctx.lineTo(ex - Math.cos(ah + 0.4) * 9, ey - Math.sin(ah + 0.4) * 9);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.95)";
+        ctx.font = "bold 13px system-ui, sans-serif";
+        ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+        ctx.fillText(angDeg + "°", ex, ey - 6);
+        ctx.restore();
+      }
+      function drawWind(ctx, wind) {
+        const cx = W / 2, y = H - 8;
+        ctx.save(); ctx.strokeStyle = "#7dd3fc"; ctx.fillStyle = "#7dd3fc"; ctx.lineWidth = 3;
+        const len = wind * 7;
+        ctx.beginPath(); ctx.moveTo(cx, y); ctx.lineTo(cx + len, y); ctx.stroke();
+        if (wind !== 0) {
+          const dir = Math.sign(len);
+          ctx.beginPath(); ctx.moveTo(cx + len, y);
+          ctx.lineTo(cx + len - dir * 8, y - 5); ctx.lineTo(cx + len - dir * 8, y + 5);
+          ctx.closePath(); ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      /* ====================================================================
+         Game state + DOM wiring
+         ==================================================================== */
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d");
+      const terrain = document.createElement("canvas");
+      terrain.width = W; terrain.height = H;
+      const tctx = terrain.getContext("2d");
+
+      const el = (id) => document.getElementById(id);
+      const dom = {
+        stage: el("stage"), side: el("side"),
+        overlay: el("overlay"), name0: el("name0"), name1: el("name1"),
+        score0: el("score0"), score1: el("score1"), pill0: el("pill0"), pill1: el("pill1"),
+        windText: el("windText"), targetText: el("targetText"), turnWho: el("turnWho"),
+        flyTag: el("flyTag"), sliders: el("sliders"), angle: el("angle"), power: el("power"),
+        angleVal: el("angleVal"), powerVal: el("powerVal"), fireBtn: el("fireBtn"),
+        msg: el("msg"), msgText: el("msgText"), msgBtn: el("msgBtn"),
+      };
+
+      // settings chosen in the setup card
+      const settings = { names: ["Player 1", "Computer"], vsCpu: true, planet: "Earth", target: 3 };
+      // per-player last-used aim, reflected onto the sliders
+      const aim = { angle: [45, 45], power: [15, 15] };
+
+      let G = null;   // live game state
+      let raf = 0;
+
+      function newRound(keepWins) {
+        const buildings = makeCity();
+        paintTerrain(tctx, buildings);
+        const hm = heightMap(buildings);
+        const leftIdx = randInt(1, 2);
+        const rightIdx = buildings.length - 1 - randInt(1, 2);
+        const seat = (b) => ({ x: b.x + b.w / 2, feetY: b.top, cx: b.x + b.w / 2, cy: b.top - 26, alive: true });
+        const gorillas = [seat(buildings[leftIdx]), seat(buildings[rightIdx])];
+        const w = Math.round(rand(-10, 10));
+        const first = keepWins ? randInt(0, 1) : 0;
+        G = {
+          buildings, hm, gorillas, wind: w, current: first, phase: "aim", banana: null,
+          boomT: 0, boomAt: null, sunShock: 0, danceT: 0, winner: -1,
+          wins: keepWins && G ? G.wins : [0, 0], aiAttempts: 0,
+          planet: settings.planet, target: settings.target, vsCpu: settings.vsCpu,
+          gameOver: false, cpuFireAt: 0, pendingLoser: -1,
+        };
+        hideMsg();
+        syncHUD();
+        maybeCpu();
+      }
+
+      function fire() {
+        if (!G || G.phase !== "aim" || G.gameOver) return;
+        const p = G.current;
+        const shooter = G.gorillas[p];
+        const dir = p === 0 ? 1 : -1;
+        const a = aim.angle[p] * (Math.PI / 180);
+        const v = aim.power[p] * POWER_SCALE;
+        G.banana = {
+          x: shooter.cx + dir * 20, y: shooter.cy - 34,
+          vx: dir * v * Math.cos(a), vy: -v * Math.sin(a),
+          spin: 0, armed: false, owner: p,
+        };
+        G.phase = "fly";
+        syncHUD();
+      }
+
+      /* ---- computer opponent ---- */
+      function simulate(angDeg, pow, shooterIdx) {
+        const dir = shooterIdx === 0 ? 1 : -1;
+        const a = angDeg * (Math.PI / 180), v = pow * POWER_SCALE;
+        const from = G.gorillas[shooterIdx], enemy = G.gorillas[1 - shooterIdx];
+        let x = from.cx + dir * 20, y = from.cy - 34;
+        let vx = dir * v * Math.cos(a), vy = -v * Math.sin(a);
+        const grav = GRAVITY[G.planet], windA = G.wind * WIND_SCALE;
+        let best = Infinity;
+        for (let s = 0; s < 2000; s++) {
+          x += vx; y += vy; vy += grav; vx += windA;
+          const d = Math.hypot(x - enemy.cx, y - enemy.cy);
+          if (d < best) best = d;
+          if (d < 22) return 0;
+          if (x < -20 || x > W + 20 || y > H + 20) break;
+          const cx = Math.round(x);
+          if (y >= 0 && cx >= 0 && cx < W && y >= G.hm[cx]) break;
+        }
+        return best;
+      }
+      function aiThink() {
+        let best = { d: Infinity, ang: 45, pow: 50 };
+        for (let ang = 32; ang <= 78; ang += 4)
+          for (let pow = 4; pow <= 30; pow += 1) {
+            const d = simulate(ang, pow, G.current);
+            if (d < best.d) best = { d, ang, pow };
+          }
+        for (let pow = best.pow - 5; pow <= best.pow + 5; pow += 1) {
+          const d = simulate(best.ang, pow, G.current);
+          if (d < best.d) best = { d, ang: best.ang, pow };
+        }
+        const noise = Math.max(1, 7 - G.aiAttempts * 2);
+        const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) * 2;
+        return {
+          ang: clamp(Math.round(best.ang + gauss() * noise * 0.5), 5, 89),
+          pow: clamp(Math.round(best.pow + gauss() * noise), 3, 30),
+        };
+      }
+      function maybeCpu() {
+        if (G.vsCpu && G.current === 1 && !G.gameOver && G.phase === "aim") {
+          G.aiAttempts++;
+          const shot = aiThink();
+          aim.angle[1] = shot.ang; aim.power[1] = shot.pow;
+          G.cpuFireAt = performance.now() + 850;
+        }
+      }
+
+      function nextTurn() {
+        G.current = 1 - G.current;
+        G.phase = "aim";
+        G.banana = null;
+        syncHUD();
+        maybeCpu();
+      }
+      function registerHit(loserIdx) {
+        const winnerIdx = 1 - loserIdx;
+        G.gorillas[loserIdx].alive = false;
+        G.wins = [...G.wins]; G.wins[winnerIdx]++;
+        G.winner = winnerIdx; G.phase = "roundover"; G.danceT = 0;
+        const nm = settings.vsCpu ? ["Player 1", "Computer"][winnerIdx] : settings.names[winnerIdx];
+        if (G.wins[winnerIdx] >= G.target) {
+          G.gameOver = true;
+          showMsg(`🏆 ${nm} wins the match ${G.wins[0]}–${G.wins[1]}!`, "Play again", () => { G.wins = [0, 0]; newRound(false); });
+        } else {
+          showMsg(`💥 ${nm} scores! (${G.wins[0]}–${G.wins[1]})`, "Next round", () => newRound(true));
+        }
+        syncHUD();
+      }
+
+      /* ---- main loop ---- */
+      function step() {
+        if (!G) { raf = requestAnimationFrame(step); return; }
+
+        if (G.cpuFireAt && performance.now() >= G.cpuFireAt && G.phase === "aim") {
+          G.cpuFireAt = 0; fire();
+        }
+
+        if (G.phase === "fly" && G.banana) {
+          const b = G.banana;
+          const grav = GRAVITY[G.planet], windA = G.wind * WIND_SCALE;
+          let resolved = false;
+          for (let s = 0; s < SUBSTEPS && !resolved; s++) {
+            b.x += (b.vx * SPEED) / SUBSTEPS; b.y += (b.vy * SPEED) / SUBSTEPS;
+            b.vy += (grav * SPEED) / SUBSTEPS; b.vx += (windA * SPEED) / SUBSTEPS;
+            b.spin += (0.22 * SPEED) / SUBSTEPS;
+            if (Math.hypot(b.x - W / 2, b.y - 46) < 26) G.sunShock = 60;
+            const thrower = G.gorillas[b.owner];
+            if (!b.armed && Math.hypot(b.x - thrower.cx, b.y - thrower.cy) > 46) b.armed = true;
+            if (b.armed) {
+              for (let i = 0; i < 2; i++) {
+                const go = G.gorillas[i];
+                if (go.alive && Math.hypot(b.x - go.cx, b.y - go.cy) < 24) {
+                  G.boomAt = { x: b.x, y: b.y }; G.boomT = 26; G.phase = "boom";
+                  G.banana = null; G.pendingLoser = i; resolved = true; break;
+                }
+              }
+              if (resolved) break;
+              const cx = Math.round(b.x), cy = Math.round(b.y);
+              if (cy >= 0 && cx >= 0 && cx < W && cy < H) {
+                const alpha = tctx.getImageData(cx, cy, 1, 1).data[3];
+                if (alpha > 10) {
+                  G.boomAt = { x: b.x, y: b.y }; G.boomT = 26; G.phase = "boom"; G.banana = null;
+                  G.pendingLoser = -1;
+                  for (let i = 0; i < 2; i++) {
+                    const go = G.gorillas[i];
+                    if (go.alive && Math.hypot(b.x - go.cx, b.y - go.cy) < BLAST_R) G.pendingLoser = i;
+                  }
+                  resolved = true; break;
+                }
+              }
+            }
+            if (b.x < -30 || b.x > W + 30 || b.y > H + 40) {
+              G.banana = null; G.phase = "aim"; resolved = true; nextTurn(); break;
+            }
+          }
+        }
+
+        if (G.phase === "boom") {
+          if (G.boomT === 26 && G.boomAt) {
+            tctx.save();
+            tctx.globalCompositeOperation = "destination-out";
+            tctx.beginPath(); tctx.arc(G.boomAt.x, G.boomAt.y, CRATER_R, 0, Math.PI * 2); tctx.fill();
+            tctx.restore();
+          }
+          G.boomT--;
+          if (G.boomT <= 0) {
+            if (G.pendingLoser >= 0) registerHit(G.pendingLoser);
+            else { G.boomAt = null; nextTurn(); }
+          }
+        }
+
+        if (G.sunShock > 0) G.sunShock--;
+        if (G.phase === "roundover") G.danceT++;
+
+        /* render */
+        const sky = ctx.createLinearGradient(0, 0, 0, H);
+        sky.addColorStop(0, "#000033"); sky.addColorStop(1, "#000a52");
+        ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+        drawSun(ctx, G.sunShock > 0);
+        ctx.drawImage(terrain, 0, 0);
+        for (let i = 0; i < 2; i++) {
+          const go = G.gorillas[i];
+          if (!go.alive) continue;
+          let ll = 0, rl = 0; // left / right arm lift, 0..1
+          if (G.phase === "roundover" && G.winner === i) {
+            // smooth, slow victory swing — arms alternate: one up while the
+            // other is down, driven by opposite phases of the same sine wave
+            const s = 0.5 - 0.5 * Math.cos(G.danceT * 0.12);
+            ll = s; rl = 1 - s;
+          } else if ((G.phase === "aim" && G.current === i) ||
+                     (G.phase === "fly" && G.banana && G.banana.owner === i)) {
+            // throwing arm raised and ready (right arm for P1, left arm for P2)
+            if (i === 0) rl = 1; else ll = 1;
+          }
+          drawGorilla(ctx, go.x, go.feetY, ll, rl);
+        }
+        // aim guide for the human whose turn it is (hidden during the CPU's aim)
+        if (G.phase === "aim" && !(G.vsCpu && G.current === 1)) {
+          const p = G.current, go = G.gorillas[p];
+          if (go.alive) drawAimGuide(ctx, go, p === 0 ? 1 : -1, aim.angle[p], aim.power[p]);
+        }
+        if (G.banana) drawBanana(ctx, G.banana.x, G.banana.y, G.banana.spin);
+        if (G.phase === "boom" && G.boomAt) {
+          const t = G.boomT / 26, r = CRATER_R * (1.6 - t);
+          const grd = ctx.createRadialGradient(G.boomAt.x, G.boomAt.y, 0, G.boomAt.x, G.boomAt.y, r);
+          grd.addColorStop(0, `rgba(255,255,220,${t})`);
+          grd.addColorStop(0.5, `rgba(255,160,40,${t * 0.9})`);
+          grd.addColorStop(1, "rgba(255,80,20,0)");
+          ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(G.boomAt.x, G.boomAt.y, r, 0, Math.PI * 2); ctx.fill();
+        }
+        drawWind(ctx, G.wind);
+
+        raf = requestAnimationFrame(step);
+      }
+
+      /* ---- HUD sync ---- */
+      function syncHUD() {
+        if (!G) return;
+        dom.name0.textContent = settings.names[0];
+        dom.name1.textContent = settings.vsCpu ? "Computer" : settings.names[1];
+        dom.score0.textContent = G.wins[0];
+        dom.score1.textContent = G.wins[1];
+        dom.targetText.textContent = G.target;
+        dom.windText.textContent = G.wind === 0 ? "calm" : `wind ${Math.abs(G.wind)} ${G.wind > 0 ? "→ E" : "← W"}`;
+        const activeP = G.phase !== "roundover" && !G.gameOver ? G.current : -1;
+        dom.pill0.className = "pill" + (activeP === 0 ? " active-cyan" : "");
+        dom.pill1.className = "pill" + (activeP === 1 ? " active-rose" : "");
+
+        const isCpuTurn = G.vsCpu && G.current === 1;
+        const turnName = (G.vsCpu ? ["Player 1", "Computer"] : settings.names)[G.current];
+        dom.turnWho.textContent = isCpuTurn ? "Computer is aiming…" : `${turnName}'s turn`;
+        dom.flyTag.hidden = G.phase !== "fly";
+
+        // reflect the current player's aim onto the sliders
+        const p = G.current;
+        dom.angle.value = aim.angle[p]; dom.power.value = aim.power[p];
+        dom.angleVal.textContent = aim.angle[p] + "°";
+        dom.powerVal.textContent = aim.power[p];
+
+        const canFire = G.phase === "aim" && !isCpuTurn && !G.gameOver;
+        dom.fireBtn.disabled = !canFire;
+        dom.sliders.className = "sliders" + (canFire ? "" : " locked");
+      }
+      function showMsg(text, btnLabel, onClick) {
+        dom.msgText.textContent = text;
+        dom.msgBtn.textContent = (btnLabel === "Play again" ? "↻ " : "▶ ") + btnLabel;
+        dom.msgBtn.onclick = onClick;
+        dom.msg.classList.add("show");
+      }
+      function hideMsg() { dom.msg.classList.remove("show"); }
+
+      /* ---- controls wiring ---- */
+      dom.angle.addEventListener("input", (e) => {
+        if (!G) return; aim.angle[G.current] = +e.target.value; dom.angleVal.textContent = e.target.value + "°";
+      });
+      dom.power.addEventListener("input", (e) => {
+        if (!G) return; aim.power[G.current] = +e.target.value; dom.powerVal.textContent = e.target.value;
+      });
+      dom.fireBtn.addEventListener("click", fire);
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && G && !dom.fireBtn.disabled) fire();
+      });
+
+      /* ---- setup card ---- */
+      let setupVsCpu = true;
+      el("opp_cpu").onclick = () => { setupVsCpu = true; el("opp_cpu").classList.add("on"); el("opp_2p").classList.remove("on"); el("wrap_name1").style.display = "none"; };
+      el("opp_2p").onclick = () => { setupVsCpu = false; el("opp_2p").classList.add("on"); el("opp_cpu").classList.remove("on"); el("wrap_name1").style.display = "block"; };
+      el("in_target").addEventListener("input", (e) => { el("targetLabel").textContent = e.target.value; });
+      el("newMatchBtn").onclick = () => dom.overlay.classList.remove("hide");
+      el("startBtn").onclick = () => {
+        settings.vsCpu = setupVsCpu;
+        settings.names = [el("in_name0").value || "Player 1", setupVsCpu ? "Computer" : (el("in_name1").value || "Player 2")];
+        settings.planet = el("in_planet").value;
+        settings.target = +el("in_target").value;
+        aim.angle = [45, 45]; aim.power = [15, 15];
+        dom.overlay.classList.add("hide");
+        dom.stage.hidden = false; dom.side.hidden = false;
+        newRound(false);
+      };
+
+      /* ---- "Did you know?" retro-computing facts ---- */
+      const FACTS = [
+        "GORILLAS.BAS was written by Microsoft's Robert Donner in 1990 and shipped with QBasic in MS-DOS 5.0 (1991). He also worked on Minesweeper.",
+        "QBasic was a stripped-down, interpreter-only version of QuickBASIC, bundled free with MS-DOS so it couldn't compile stand-alone programs.",
+        "GORILLAS wasn't the only pack-in game: QBasic also came with NIBBLES.BAS, a two-player snake game.",
+        "A \"nibble\" really is a unit of data — 4 bits, or half a byte. Two nibbles make one byte.",
+        "MS-DOS 1.0 launched with the IBM PC in 1981. Microsoft bought the underlying OS, 86-DOS, from Seattle Computer Products.",
+        "86-DOS was originally nicknamed QDOS — the \"Quick and Dirty Operating System\" — written by Tim Paterson.",
+        "DOS filenames were limited to \"8.3\": up to eight characters, a dot, and a three-letter extension.",
+        "Conventional memory in DOS topped out at 640 KB. Bill Gates is often quoted as saying \"640K ought to be enough for anyone\" — he insists he never said it.",
+        "CONFIG.SYS and AUTOEXEC.BAT were the two files that set up your DOS machine every time it booted.",
+        "DOS used the backslash \\ as its path separator, splitting from Unix, which had already claimed the forward slash for command options.",
+        "Ctrl+Alt+Delete was invented by IBM engineer David Bradley as a quick way for developers to reboot — he never expected users to see it.",
+        "Before the full-screen EDIT arrived in DOS 5, you edited text with EDLIN, a clunky line-at-a-time editor.",
+        "The blue EDIT editor in DOS 5 was really just the QBasic editor without the programming parts.",
+        "DOS had no multitasking — one program ran at a time, with total control of the machine.",
+        "BASIC — Beginner's All-purpose Symbolic Instruction Code — was created in 1964 at Dartmouth by John Kemeny and Thomas Kurtz.",
+        "Early BASIC programs were numbered by tens (10, 20, 30…) so you could squeeze new lines in between later.",
+        "Microsoft's very first product, in 1975, was a BASIC interpreter for the Altair 8800 microcomputer.",
+        "The Altair 8800 (1975), sold as a mail-order kit, helped ignite the personal-computer revolution.",
+        "Before DOS, CP/M by Gary Kildall's Digital Research was the dominant operating system for 8-bit micros.",
+        "Windows ran on top of DOS for years — DOS was still lurking underneath all the way through Windows Me in 2000.",
+        "The original 1981 IBM PC ran an Intel 8088 at just 4.77 MHz.",
+        "The Intel 4004 (1971) was the first commercial microprocessor — a 4-bit chip with about 2,300 transistors.",
+        "A modern CPU packs billions of transistors; the 4004 had roughly 2,300.",
+        "CGA graphics (1981) gave you four colors at 320×200 — the notorious cyan/magenta/white palette haunts many old games.",
+        "EGA (1984) bumped that to 16 colors at 640×350 — the palette era GORILLAS' colorful skyline comes from.",
+        "VGA (1987) introduced 256 colors at 320×200. That \"Mode 13h\" became the favorite canvas of 1990s DOS game coders.",
+        "Mode 13h was loved because its screen was one simple, linear block of memory — one byte per pixel.",
+        "For years the only sound a PC could make was square-wave beeps through its tiny built-in speaker.",
+        "Real music and effects arrived with add-in sound cards: AdLib (1987) and then the Sound Blaster (1989).",
+        "The Atari 2600 (1977) ran an 8-bit MOS 6507 and had a mere 128 bytes of RAM — not kilobytes, bytes.",
+        "Atari 2600 programmers had to \"race the beam,\" timing their code to the TV's moving electron beam to draw each line.",
+        "The word \"sprite\" comes from the way these little graphics seem to float over the background like a ghost.",
+        "Nintendo's Famicom (1983), sold in the West as the NES, used a CPU based on the 8-bit MOS 6502.",
+        "The Commodore 64 (1982) had 64 KB of RAM — hence the name — and is the best-selling single computer model ever.",
+        "Pac-Man (1980) was designed by Namco's Toru Iwatani, reportedly inspired by a pizza missing a slice.",
+        "The rumor that Space Invaders (1978) caused a coin shortage in Japan is a myth — but a very persistent one.",
+        "Nintendo's Game Boy (1989) used an 8-bit CPU and a monochrome green-tinted LCD, and ran for years on AA batteries.",
+        "Tetris was created in 1984 by Alexey Pajitnov while working at a Soviet computing center.",
+        "The @ sign in email was chosen by Ray Tomlinson in 1971 simply because it was unlikely to appear in anyone's name.",
+        "The first computer \"bug\" was a literal moth, taped into a 1947 logbook by the team working on the Harvard Mark II.",
+        "Grace Hopper helped create COBOL and popularized the terms \"bug\" and \"debugging\" in computing.",
+        "ASCII, standardized in 1963, encodes each character in just 7 bits — 128 possible symbols.",
+        "Floppy disks shrank over time: from 8-inch, to 5.25-inch, to the 3.5-inch disk that was rigid despite still being called \"floppy.\"",
+        "A 3.5-inch high-density floppy held 1.44 MB — a photo from a modern phone wouldn't even fit on one.",
+        "Dial-up modems spoke the Hayes \"AT\" command set, which is why they all started commands with the letters AT.",
+        "Turbo Pascal (1983) from Borland made compiling code fast and cheap, and became a DOS programming staple.",
+        "Typing FORMAT C: at the DOS prompt could wipe your entire hard drive — a command feared by every PC owner.",
+        "Many DOS games needed a custom boot disk just to free up enough of that precious 640 KB of memory to run.",
+        "The IBM PC's BIOS lived in a ROM chip and handled the lowest-level talking to the hardware at startup.",
+        "The PC's 640 KB limit came from how the 8088's 1 MB address space was carved up — the top 384 KB was reserved for hardware.",
+        "QuickBASIC, the paid compiler, and QBasic, the free interpreter, shared an editor — so millions learned to code in that same blue screen.",
+        "The sun in GORILLAS reacts when you hit it — a tiny detail that delighted players decades before \"juice\" became a game-design buzzword.",
+      ];
+      const factText = el("factText"), factNum = el("factNum");
+      let factIdx = Math.floor(Math.random() * FACTS.length);
+      let factTimer = 0;
+      function renderFact() {
+        factText.textContent = FACTS[factIdx];
+        factNum.textContent = (factIdx + 1) + " / " + FACTS.length;
+      }
+      function showFact(next) {
+        factIdx = (factIdx + (next ? 1 : 0) + FACTS.length) % FACTS.length;
+        factText.style.opacity = 0;
+        setTimeout(() => { renderFact(); factText.style.opacity = 1; }, 350);
+      }
+      function scheduleFacts() {
+        clearInterval(factTimer);
+        factTimer = setInterval(() => showFact(true), 11000);
+      }
+      el("factNext").addEventListener("click", () => { showFact(true); scheduleFacts(); });
+      renderFact();
+      scheduleFacts();
+
+      // kick the render loop (idles until a match starts)
+      raf = requestAnimationFrame(step);
+</script>
+  </body>
+</html>
